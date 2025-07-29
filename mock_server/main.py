@@ -68,8 +68,9 @@ class UserPlanStore:
         return dict(cls._store)
 
 
+# The AuthAndPlanMiddleware (previously extracted username from X-Username header) has been removed.
+# Username is now provided via API query parameter, and all user/plan logic is handled inside the relevant endpoints.
 
-# Note: Removed AuthAndPlanMiddleware. Username will be supplied as input parameter to route rather than header based.
 from fastapi import Query
 
 # PUBLIC_INTERFACE
