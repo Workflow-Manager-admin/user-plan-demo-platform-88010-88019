@@ -69,52 +69,43 @@ class UserPlanStore:
 
 
 
-class AuthAndPlanMiddleware(BaseHTTPMiddleware):
+# Note: Removed AuthAndPlanMiddleware. Username will be supplied as input parameter to route rather than header based.
+from fastapi import Query
+
+# PUBLIC_INTERFACE
+@app.get("/user/data", tags=["user"], summary="Get user data with plan-specific response", responses={
+    200: {
+        "description": "User plan-specific data response",
+        "content": {
+            "application/json": {
+                "example": {
+                    "username": "alice",
+                    "plan": "free",
+                    "data": {
+                        "message": "Hello alice, you are on the FREE plan! Limited access to features.",
+                        "features": ["feature_a"]
+                    }
+                }
+            }
+        }
+    },
+    400: {"description": "Missing required parameter or user not found"},
+})
+async def get_user_data(
+    username: str = Query(..., description="Username to fetch plan-based data for (e.g., alice, bob, carol)")
+):
     """
-    Middleware that extracts username from the 'X-Username' header,
-    authenticates the user, and attaches the user's plan to the request.state.
-    """
-    async def dispatch(self, request: Request, call_next):
-        username = request.headers.get('X-Username')
-        if not username:
-            return JSONResponse(status_code=401, content={"error": "X-Username header missing"})
+    PUBLIC_INTERFACE
 
-        # Look up plan with the storage backend
-        plan = UserPlanStore.get_plan_for_user(username)
-        if not plan:
-            return JSONResponse(status_code=403, content={"error": f"User {username} does not exist or has no assigned plan."})
-        # Attach user and plan to state
-        request.state.username = username
-        request.state.plan = plan
-        response = await call_next(request)
-        return response
+    Returns data tailored to the given user's assigned plan.
 
-# Add the middleware to the app
-app.add_middleware(AuthAndPlanMiddleware)
-
-
-def get_current_user_plan(request: Request) -> Dict[str, str]:
-    """
-    Dependency to extract the current username and plan from the request.
-    """
-    # PUBLIC_INTERFACE
-    return {
-        "username": getattr(request.state, "username", None),
-        "plan": getattr(request.state, "plan", None)
-    }
-
-
-@app.get("/user/data", tags=["user"], summary="Get user data with plan-specific response")
-async def get_user_data(user_info: dict = Depends(get_current_user_plan)):
-    """
-    Returns data tailored to the user's assigned plan. Demonstrates concept of differentiated API behaviour.
-
-    - **Header**: X-Username: REQUIRED, one of 'alice', 'bob', 'carol'
+    - **Query Parameter**: username (required) - one of 'alice', 'bob', 'carol'
     - **Returns:** JSON with plan-specific content
+    - **No header-based authentication required**
     """
-    # PUBLIC_INTERFACE
-    username = user_info["username"]
-    plan = user_info["plan"]
+    plan = UserPlanStore.get_plan_for_user(username)
+    if not plan:
+        raise HTTPException(status_code=404, detail=f"User '{username}' does not exist or has no assigned plan.")
 
     # Example: Change API results based on plan
     if plan == "free":
