@@ -12,12 +12,61 @@ app = FastAPI(
     ]
 )
 
-# In-memory user-plan mapping for demo purposes
-USER_PLANS: Dict[str, str] = {
-    "alice": "free",
-    "bob": "pro",
-    "carol": "enterprise"
-}
+# Plan storage backend abstraction for demonstration
+class UserPlanStore:
+    """
+    Demonstrates storing/retrieving user plan info.
+    Currently uses an in-memory dictionary but could swap for environment-based or DB-backed storage.
+    """
+    _store: Dict[str, str] = {
+        "alice": "free",
+        "bob": "pro",
+        "carol": "enterprise"
+    }
+
+    # PUBLIC_INTERFACE
+    @classmethod
+    def get_plan_for_user(cls, username: str) -> str:
+        """
+        Retrieves the plan for the given username.
+        Currently from in-memory store.
+        """
+        return cls._store.get(username)
+
+    # PUBLIC_INTERFACE
+    @classmethod
+    def set_plan_for_user(cls, username: str, plan: str):
+        """
+        Sets/overrides the plan for a user (for demonstration/testing).
+        """
+        cls._store[username] = plan
+
+    # PUBLIC_INTERFACE
+    @classmethod
+    def load_from_env(cls, env_var="USER_PLANS"):
+        """
+        Load user plans from an environment variable (if demonstration requires it).
+        Env var format: 'alice=free,bob=pro,carol=enterprise'
+        """
+        import os
+        val = os.environ.get(env_var)
+        if val:
+            new_store = {}
+            for entry in val.split(","):
+                if "=" in entry:
+                    user, plan = entry.split("=", 1)
+                    new_store[user.strip()] = plan.strip()
+            if new_store:
+                cls._store = new_store
+
+    # PUBLIC_INTERFACE
+    @classmethod
+    def all_user_plans(cls) -> Dict[str, str]:
+        """
+        Returns all current user-plan mappings (for demonstration).
+        """
+        return dict(cls._store)
+
 
 
 class AuthAndPlanMiddleware(BaseHTTPMiddleware):
@@ -30,7 +79,8 @@ class AuthAndPlanMiddleware(BaseHTTPMiddleware):
         if not username:
             return JSONResponse(status_code=401, content={"error": "X-Username header missing"})
 
-        plan = USER_PLANS.get(username)
+        # Look up plan with the storage backend
+        plan = UserPlanStore.get_plan_for_user(username)
         if not plan:
             return JSONResponse(status_code=403, content={"error": f"User {username} does not exist or has no assigned plan."})
         # Attach user and plan to state
@@ -88,6 +138,24 @@ async def get_user_data(user_info: dict = Depends(get_current_user_plan)):
 
     return {"username": username, "plan": plan, "data": data}
 
+# PUBLIC_INTERFACE
+@app.get("/user/plan", tags=["user"], summary="View all user plan assignments")
+async def get_all_user_plans():
+    """
+    Returns the current mapping of usernames to assigned plans.
+    Demonstrates how plan mapping could be retrieved from backend storage.
+    """
+    return UserPlanStore.all_user_plans()
+
+# PUBLIC_INTERFACE
+@app.post("/user/plan", tags=["user"], summary="Assign or update a user's plan")
+async def update_user_plan(username: str, plan: str):
+    """
+    Assign or update a specific user's plan for demonstration/testing purposes.
+    In a real system, such changes would be restricted to admin only.
+    """
+    UserPlanStore.set_plan_for_user(username, plan)
+    return {"message": f"Plan for user '{username}' set to '{plan}'."}
 
 @app.get("/", tags=["user"], summary="Basic health check endpoint")
 async def root():
